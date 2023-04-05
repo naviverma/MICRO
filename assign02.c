@@ -8,34 +8,38 @@ void welcome()
 
 {
 
-  
+
   printf("\n+____________________________________________________________________________________+\n");
   printf("|                        Group 44                            |                       |\n");
   printf("|------------------------------------------------------------+-----------------------|\n");
   printf("|                                                            |      GAME LEVELS      |\n");
   printf("|                                                            |-----------------------|\n");
   printf("|                                                            |    LEVEL 1 - EASY     |\n");
-  printf("|                                                            |    LEVEL 2 - MEDIUM   |\n");
-  printf("|                                                            |    LEVEL 3 - HARD     |\n");
-  printf("|                                                            |    LEVEL 4 - EXTREME  |\n");
-  printf("|                                                            |-----------------------|\n");
+  printf("|     __  __ _____ _____   ____  ________  ____  _____       |    LEVEL 2 - MEDIUM   |\n");
+  printf("|    |  `/  |     |  __  )/ ___| |   ____|                   |    LEVEL 3 - HARD     |\n");
+  printf("|    |  `/  | |   | |__) |( ___  |  |____                    |    LEVEL 4 - EXTREME  |\n");
+  printf("|    | |  | | |   |  _  /     ) ||  _____|    ____      __   |-----------------------|\n");
+  printf("|    | |  | | |   | | | |  ___) /|  |____                    |                       |\n");
+  printf("|    |_|  |_|_____|_| |_||____ / |_______| ____ ____ ___     |                       |\n");
+  printf("|                                                            |                       |\n");
+  printf("|                                                            |                       |\n");
+  printf("|      ____ _____ ____ ____  _____ _____ ____      _    ____ |                       |\n");
+  printf("|    / ___|     |  __  |  ___|                               |                       |\n");
+  printf("|   | |   | |   | |  ) | |_|                                 |                       |\n");
+  printf("|   | |__ | |   | | /  | |___                                |                       |\n");
+  printf("|      ___|_____|____ /|_____| _____ ______ ______    ____   |                       |\n");
   printf("|                                                            |                       |\n");
   printf("|                                                            |                       |\n");
   printf("|                                                            |                       |\n");
-  printf("|                                                            |                       |\n");
-  printf("|                                                            |                       |\n");
-  printf("|                                                            |                       |\n");
-  printf("|                                                            |                       |\n");
-  printf("|                                                            |                       |\n");
-  printf("|                                                            |                       |\n");
-  printf("|                                                            |                       |\n");
-  printf("|                                                            |                       |\n");
-  printf("|                                                            |                       |\n");
-  printf("|                                                            |                       |\n");
-  printf("|                                                            |                       |\n");
+  printf("|            -- --- .-. ... . / -.-. --- -.. .               |                       |\n");
+  printf("|                   --. .- -- . .--.                         |                       |\n");
   printf("|                                                            |                       |\n");
   printf("|                                                            |                       |\n");
   printf("+____________________________________________________________+_______________________+\n");
+  printf("\nWelcome player to our morse game!!\n");
+  printf("\nTo succeed in this game you must enter the correct morse sequence ");
+  printf("\nHold onto GP21 button for less than 20s for a dot and more than 20s dor a dash.");
+  printf("\nSelect difficult level and begin.");
 
 }
 
@@ -63,6 +67,7 @@ void endGame()
 
 
 }
+
 
 // Main entry point of the application
 int main() {
