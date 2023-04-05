@@ -38,8 +38,8 @@ void welcome()
   printf("+____________________________________________________________+_______________________+\n");
   printf("\nWelcome player to our morse game!!\n");
   printf("\nTo succeed in this game you must enter the correct morse sequence ");
-  printf("\nHold onto GP21 button for less than 20s for a dot and more than 20s dor a dash.");
-  printf("\nSelect difficult level and begin.");
+  printf("\nHold onto GP21 button for less than 20s for a dot and more than 20s for a dash.");
+  printf("\nSelect difficultly level and begin.");
 
 }
 
@@ -50,7 +50,7 @@ printf("\n+______________________________________________________________+\n");
 printf("|                                                              |\n");
 printf("|  ______  __      _____________      ___________      ____    |\n");
 printf("|                                                              |\n");
-printf("|  _____          __  __ ______    ______      ________ _____  |\n");  
+printf("| _____          __  __ ______    ______      ________ _____   |\n");  
 printf("|/ ____|   / |  |   V  |  ____|  / __ | |    / /  ____|  __ )  |\n");
 printf("| |  __   /   | |    / | |__    | |  | |  | / /| |__  | |__) | |\n");
 printf("| | |_ | / /  | | | V| |  __|   | |  | ||  V / |  __| |  _  /  |\n");
