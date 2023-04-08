@@ -150,7 +150,7 @@ int morseCodeCheck(int index)
         }
         if(morseCode[index][bitsNumber + 1] != '\0') return 0;
         return 1;
- * @brief Prints the welcome screen on the console
+/* @brief Prints the welcome screen on the console
  */
 void startGame()
 {
@@ -275,8 +275,8 @@ printf("|                                                              |\n");
 printf("|         ______________     __________  ____                  |\n");
 printf("+______________________________________________________________+\n");
 printf("\nWelcome to level One!!!!");
-=======
- * @brief Executes a countdown before starting the current level with the target letter.
+    
+ /* @brief Executes a countdown before starting the current level with the target letter.
  * @param level The current game level.
  * @param randomMorse The index of the random Morse code character in the morseCode array.
  * @param score The current score.
