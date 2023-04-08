@@ -286,6 +286,35 @@ printf("|         ______________     __________  ____                  |\n");
 printf("+______________________________________________________________+\n");
 printf("\nWelcome to level One!!!!");
 }
+ /* @brief Prints the 'Level Two' screen to the console
+*/
+void startLevelTwo() {
+empty();
+printf("\n+______________________________________________________________+\n");
+printf("|                                                              |\n");
+printf("|                                                              |\n");
+printf("|  ______  __      _____________      ___________      ____    |\n");
+printf("|                                                              |\n");
+printf("|                                                              |\n");
+printf("|         #        ######  #         #  ########  #            |\n");
+printf("|         #        #        #       #   #         #            |\n");
+printf("|         #        #####     #     #    #####     #            |\n");
+printf("|         #        #          #   #     #         #            |\n");
+printf("|         #######  #######      #       ########  #######      |\n");
+printf("|                                                              |\n");
+printf("|               ##########  #       #   ########               |\n");
+printf("|                   #       #       #  #        #              |\n");
+printf("|                   #       #   #   #  #        #              |\n");
+printf("|                   #       #  #  # #  #        #              |\n");
+printf("|                   #       #       #   ########               |\n");
+printf("|                                                              |\n");
+printf("|                                                              |\n");
+printf("|             .-.. . ...- . .-.. / - --- ..-                   |\n");
+printf("|                                                              |\n");
+printf("|         ______________     __________  ____                  |\n");
+printf("+______________________________________________________________+\n");
+printf("\nWelcome to level Two!!!!");
+}
     
 /** @brief Executes a countdown before starting the current level with the target letter.
  * @param level The current game level.
@@ -544,36 +573,6 @@ void waitForOneSec()
 {
     while (spaceOrNot == 0) {}
     spaceOrNot = 0;
-}
-
- /* @brief Prints the 'Level Two' screen to the console
-*/
-void startLevelTwo() {
-empty();
-printf("\n+______________________________________________________________+\n");
-printf("|                                                              |\n");
-printf("|                                                              |\n");
-printf("|  ______  __      _____________      ___________      ____    |\n");
-printf("|                                                              |\n");
-printf("|                                                              |\n");
-printf("|         #        ######  #         #  ########  #            |\n");
-printf("|         #        #        #       #   #         #            |\n");
-printf("|         #        #####     #     #    #####     #            |\n");
-printf("|         #        #          #   #     #         #            |\n");
-printf("|         #######  #######      #       ########  #######      |\n");
-printf("|                                                              |\n");
-printf("|               ##########  #       #   ########               |\n");
-printf("|                   #       #       #  #        #              |\n");
-printf("|                   #       #   #   #  #        #              |\n");
-printf("|                   #       #  #  # #  #        #              |\n");
-printf("|                   #       #       #   ########               |\n");
-printf("|                                                              |\n");
-printf("|                                                              |\n");
-printf("|             .-.. . ...- . .-.. / - --- ..-                   |\n");
-printf("|                                                              |\n");
-printf("|         ______________     __________  ____                  |\n");
-printf("+______________________________________________________________+\n");
-printf("\nWelcome to level Two!!!!");
 }
 
 /* @brief The main process of the game that runs on core 1, handling user input and game progression.
