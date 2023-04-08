@@ -1,29 +1,43 @@
-/**
- * @file assign02.c
- * @brief This file contains the source code for the assign02 project.
- */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
-#include "pico/multicore.h" 
+#include "pico/multicore.h" // Required for using multiple cores on the RP2040.
 #include "assign02.pio.h"
 #include "assign02.h"
 #include "hardware/structs/watchdog.h"
-#define RGBW_FORMAT true
-#define PIN_LIGHT 28
-int waitButton;
-int bitsNumber;
-int spaceOrNot;
-int previousState;
-int livesNumber;
+
+//! Will use RGBW format
+#define IS_RGBW true
+//! There is 1 WS2812 device in the chain
+#define NUM_PIXELS 1
+//! The GPIO pin that the WS2812 connected to
+#define WS2812_PIN 28
+
+int button_buffer;  //! shared variable between asm and c code, stores the morse code buffer
+int number_of_bits; //! shared variable between asm and c code, stores the number of bits in the buffer
+int isSpace;
+int prev;  //! Store the previous state of  button_buffer
+int lives; //! Player lives
+
+static inline void put_pixel(uint32_t pixel_grb)
+{
+    pio_sm_put_blocking(pio0, 0, pixel_grb << 8u);
+}
+
+static inline uint32_t urgb_u32(uint8_t r, uint8_t g, uint8_t b)
+{
+    return ((uint32_t)(r) << 8) |
+           ((uint32_t)(g) << 16) |
+           (uint32_t)(b);
+}
+
+// Declare the main assembly code entry point.
 
 /**
- * @brief Wrapper to allow the assembly code to call the gpio_init()
- *        SDK function.
- * 
- * @param pin       The GPIO pin number to initialise.
+ * @brief
+ * Initialise a GPIO pin – see SDK for detail on gpio_init()
+ * @param pin
  */
 void asm_gpio_init(uint pin)
 {
@@ -31,11 +45,10 @@ void asm_gpio_init(uint pin)
 }
 
 /**
- * @brief Wrapper to allow the assembly code to call the gpio_set_dir()
- *        SDK function.
- * 
- * @param pin       The GPIO pin number of which to set the direction.
- * @param dir       Specify the direction that the pin should be set to (0=input/1=output).
+ * @brief
+ * Set direction of a GPIO pin – see SDK for detail on gpio_set_dir()
+ * @param pin
+ * @param out
  */
 void asm_gpio_set_dir(uint pin, bool out)
 {
@@ -43,11 +56,10 @@ void asm_gpio_set_dir(uint pin, bool out)
 }
 
 /**
- * @brief Wrapper to allow the assembly code to call the gpio_get()
- *        SDK function.
- * 
- * @param pin       The GPIO pin number to read from.
- * @return int      Returns the current value of the GPIO pin.
+ * @brief
+ * Get the value of a GPIO pin – see SDK for detail on gpio_get()
+ * @param pin
+ * @return bool
  */
 bool asm_gpio_get(uint pin)
 {
@@ -55,29 +67,30 @@ bool asm_gpio_get(uint pin)
 }
 
 /**
- * @brief Wrapper to allow the assembly code to call the gpio_put()
- *        SDK function.
- * 
- * @param pin       The GPIO pin number to write to.
- * @param value     Specify the value that the pin should be set to (0/1).
+ * @brief
+ * Set the value of a GPIO pin – see SDK for detail on gpio_put()
+ * @param pin
+ * @param value
  */
 void asm_gpio_put(uint pin, bool value)
 {
     gpio_put(pin, value);
 }
 
-
+/**
+ * @brief
+ * Enable falling-edge interrupt – see SDK for detail on gpio_set_irq_enabled()
+ * TODO change this, right now it resembles the behaviour of GPIO_IRQ_HIGH
+ * @param pin
+ */
 void asm_gpio_set_irq(uint pin)
 {
     gpio_set_irq_enabled(pin, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true);
 }
 
 /**
- * @brief This function acts as the main entry-point for core #1.
- *        A function pointer is passed in via the FIFO with one
- *        incoming int32_t used as a parameter. The function will
- *        provide an int32_t return value by pushing it back on 
- *        the FIFO, which also indicates that the result is ready.
+ * @brief
+ * set up code to run on core 1
  */
 void core1_entry()
 {
@@ -90,580 +103,772 @@ void core1_entry()
     }
 }
 
+//-------------UTILITY FUNCTIONS------------
 /**
- * @brief This function writes a pixel to the PIO state machine.
- * 
- * @param pixel  The pixel value to write to the PIO state machine.
+ * @brief
+ * This function return the bits pointer and enables other parts of code to read the buffer information
+ * @return int
  */
-static inline void put_pixel(uint32_t pixel)
+int *get_bits(int buffer, int number_of_bits)
 {
-    pio_sm_put_blocking(pio0, 0, pixel << 8u);
-}
+    int *bits = malloc(sizeof(int) * number_of_bits);
 
-/**
- * @brief This function converts a RGB value to a 32-bit unsigned integer.
- * 
- * @param red The value of the red component.
- * @param green The value of the green component.
- * @param blue The value of the blue component.
- * @return uint32_t The 32-bit unsigned integer value of the RGB value.
- */
-static inline uint32_t urgb_u32(uint8_t red, uint8_t green, uint8_t blue)
-{
-    return ((uint32_t)(red) << 8) |
-           ((uint32_t)(green) << 16) |
-           (uint32_t)(blue);
-}
+    int k;
+    for (k = 0; k < number_of_bits; k++)
+    {
+        int mask = 1 << k;
+        int masked_n = buffer & mask;
+        int thebit = masked_n >> k;
+        bits[k] = thebit;
+    }
 
-/**
- * @brief The current word buffer gets reset
- */
-void bufferReset()
-{
-    waitButton = 1;
-    bitsNumber = 0;
-    previousState = 0;
-    return;
-}
-
-/**
- * @brief Returns a pointer to an array of bits representing the given buffer, allowing other parts of the code to access the 
- *        buffer's binary information.
- * @param buffer The integer buffer to extract bits from.
- * @param bitsNumber The number of bits to extract from the buffer.
- * @return int* bits A pointer to an array of bits.
-*/
-int *arrBits(int buffer, int bitsNumber)
-{
-    int *bits = malloc(sizeof(int) * bitsNumber);
-    for (int k = 0; k < bitsNumber; k++)
-        bits[k] = (buffer & (1 << k)) >> k;
     return bits;
 }
 
 /**
- * @brief Compares the Morse code stored in the buffer with the Morse code of the letter at the specified index.
- * @param index The index of the letter to compare against the buffer.
- * @return int Returns 1 if the buffer's Morse code matches the letter's Morse code, 0 otherwise.
+ * @brief
+ * Function to clear the console
  */
-int morseCodeCheck(int index)
+void clearscreen()
 {
-    int *bits = arrBits(waitButton, bitsNumber);
-    if (bitsNumber >= 6)
+    for (int i = 0; i < 50; i++)
+    {
+        printf("\n");
+    }
+}
+
+/**
+ * @brief
+ * Resets the current word buffer
+ */
+void reset_buffer()
+{
+    button_buffer = 1;
+    number_of_bits = 0;
+    return;
+}
+
+/**
+ * @brief
+ * check if the code stored in the buffer matches the code of the letter in the index
+ * @param index
+ * @return int
+ */
+int check_morse(int index)
+{
+
+    if (number_of_bits > 7)
     {
         return 0;
     }
-    else 
+
+    int *bits = get_bits(button_buffer, number_of_bits);
+    for (int i = 0; i < number_of_bits; i++)
     {
-        for (int i = 0; i < bitsNumber; i++)
+        if (bits[number_of_bits - i - 1] != (int)(codeDict[index][i + 1]) - 45)
         {
-            if(bits[bitsNumber - i - 1] != (int)(morseCode[index][i + 1]) - 45) return 0;
+            return 0;
         }
-        if(morseCode[index][bitsNumber + 1] != '\0') return 0;
-        return 1;
     }
+
+    if (codeDict[index][number_of_bits + 1] != '\0')
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+/**
+ * @brief
+ * Return the letter corresponding to the letter, else return ?
+ * @return char
+ */
+char search_morse()
+{
+    for (int i = 0; i < 36; i++)
+    {
+        if (check_morse(i) == 1)
+        {
+            return codeDict[i][0];
+        }
+    }
+
+    return '?';
 }
 /**
- * @brief Clears the console by printing 50 new lines
+ * @brief
+ * Checks if the input is a space or not
+ * @return char
  */
-void empty()
+void waitForSpace()
 {
-    for (int i = 0; i < 50; i++)
-        printf("\n");
+    while (isSpace == 0)
+    {
+    }
+
+    isSpace = 0;
 }
-/* @brief Prints the welcome screen on the console
+
+//-------------MAIN FUNCTIONS----------//
+
+/**
+ * @brief
+ * welcome banner with group number and instructions
  */
-void startGame()
+void welcomeMessage()
 {
     put_pixel(urgb_u32(0x00, 0x00, 0x7F));
-    empty();
-    printf("\n+_____________________________________________________________________________________+\n");
-    printf("|                        Group 44                            |                          |\n");
-    printf("|------------------------------------------------------------+--------------------------|\n");
-    printf("|                                                            |        GAME LEVELS       |\n");
-    printf("|                                                            |--------------------------|\n");
-    printf("|___________________________________________________________ | LEVEL 1 - CODE GIVEN     |\n");
-    printf("|                                                            | LEVEL 2 - CODE NOT GIVEN |\n");
-    printf("|    #         #   ########  #######     ######   ########   |--------------------------|\n");
-    printf("|    #  #   #  #  #        # #      #   #         #          |                          |\n");
-    printf("|    #    #    #  #        # # ####       ####    #          |                          |\n");
-    printf("|    #         #  #        # #     #           #  #####      |                          |\n");
-    printf("|    #         #  #        # #      #          #  #          |                          |\n");
-    printf("|    #         #    #######  #       #   #####    ########   |                          |\n");
-    printf("|        #########   ########  #######    #########          |                          |\n");
-    printf("|       #           #        # #       #  #                  |                          |\n");
-    printf("|       #           #        # #        # #                  |                          |\n");
-    printf("|       #           #        # #        # #######            |                          |\n");
-    printf("|       #           #        # #       #  #                  |                          |\n");
-    printf("|        #########   ########  #######    ##########         |                          |\n");
-    printf("|                                                            |                          |\n");
-    printf("| ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ |                          |\n");
-    printf("|            -- --- .-. ... . / -.-. --- -.. .               |                          |\n");
-    printf("|                   --. .- -- . .--.                         |                          |\n");
-    printf("|                                                            |                          |\n");
-    printf("|                                                            |                          |\n");
-    printf("+____________________________________________________________+__________________________+\n");
-    printf("\nWelcome player to our morse game!!\n");
-    printf("\nTo succeed in this game you must enter the correct morse sequence ");
-    printf("\nHold onto GP21 button for less than 1s for a dot and more than 1s for a dash.");
-    printf("\nSelect level difficulty and begin.");
-    printf("\n----- for level 1");
-    printf("\n.---- for level 2");
-    printf("\n");
-}
+    clearscreen();
+    printf("+---------------------------------------------------------+\n");
+    printf("|\t\t Microprocessor Systems\t\t\t  |\n");
+    printf("|\t\t   CSU23021-202122\t\t          |\n");
+    printf("|\t\t Assignment 2 by Group 9\t\t  |\n");
+    printf("+---------------------------------------------------------+\n");
+    printf("|    #        # # # #      #      # # # #  #       # \t  |\n");
+    printf("|    #        #          #   #    #     #  # #     # \t  |\n");
+    printf("|    #        # # # #  # # # # #  # # # #  #   #   # \t  |\n");
+    printf("|    #        #        #       #  #   #    #     # # \t  |\n");
+    printf("|    # # # #  # # # #  #       #  #     #  #       # \t  |\n");
+    printf("| \t\t\t\t\t\t\t\t\t\t\t\t\t\t  |\n");
 
-/**
- * @brief Prints the 'Game Over' screen on the console
-*/
-void endGame()
-{ 
-empty();
-printf("\n+________________________________________________________________________________________+\n");
-printf("|                                                                                        |\n");
-printf("|________________________________________________________________________________________|\n");
-printf("|                                                                                        |\n");
-printf("|                                                                                        |\n");
-printf("|   #########    #     #        #  ########    #######   #        # #######  ######      |\n");  
-printf("|  #          #     #  # #    # #  #          #       #   #      #  #        #     #     |\n");
-printf("|  #    ##### #######  #    #   #  ######     #       #    #    #   ####     # ####      |\n");
-printf("|  #        # #     #  #        #  #          #       #      # #    #        #     #     |\n");
-printf("|    ######## #     #  #        #  ########     ######        #     #######  #     #     |\n");
-printf("|                                                                                        |\n");
-printf("|                                                                                        |\n");
-printf("|                            --. .- -- . / --- ...- .-. . /                              |\n");
-printf("|                                                                                        |\n");
-printf("|________________________________________________________________________________________|\n");
-printf("+________________________________________________________________________________________+\n");
-printf("\nGAME OVER!!! Better luck next time :) ");
-}
-
-/**
- * @brief Prints the 'Level Complete' screen on the console
-*/
-void completedLevel() {
-empty();
-printf("\n+_______________________________________________________________________________________+\n");
-printf("|                                                                                       |\n");
-printf("|                                                                                       |\n");
-printf("|_______________________________________________________________________________________|\n");
-printf("|                                                                                       |\n");
-printf("|                                                                                       |\n");
-printf("|               #        ######  #         #  ########  #                               |\n");
-printf("|               #        #        #       #   #         #                               |\n");
-printf("|               #        #####     #     #    #####     #                               |\n");
-printf("|               #        #          #   #     #         #                               |\n");
-printf("|               #######  #######      #       ########  #######                         |\n");
-printf("|                                                                                       |\n");
-printf("|      ######   #######  #       #  ###### #      #######  ######## ########            |\n");
-printf("|     #        #       # # #   # #  #    # #      #           #     #                   |\n");
-printf("|     #        #       # #   #   #  #####  #      ####        #     #####               |\n");
-printf("|     #        #       # #       #  #      #      #           #     #                   |\n");
-printf("|      #######  #######  #       #  #      ###### #######     #     ########            |\n");
-printf("|                                                                                       |\n");
-printf("|                               .-.. . ...- . .-.. /                                    |\n");
-printf("|                      -.-. .--. .-.. --- --. ...- ..-. . -.-. .-                       |\n");
-printf("|_______________________________________________________________________________________|\n");
-printf("+_______________________________________________________________________________________+\n");
-printf("\nCONGRATULATIONS!! Level Complete");
-}
-
-/**
- * @brief Prints the 'Level One' screen to the console
-*/
-void startLevelOne() {
-empty();
-printf("\n+______________________________________________________________+\n");
-printf("|                                                              |\n");
-printf("|                                                              |\n");
-printf("|  ______  __      _____________      ___________      ____    |\n");
-printf("|                                                              |\n");
-printf("| __         __________    ___ ________  __                    |\n");
-printf("|                                                              |\n");
-printf("|      #        ####### #         #  ########  #               |\n");
-printf("|      #        #        #       #   #         #               |\n");
-printf("|      #        #####     #     #    #####     #               |\n");
-printf("|      #        #          #   #     #         #               |\n");
-printf("|      #######  #######      #       ########  #######         |\n");
-printf("|                                                              |\n");
-printf("|               ########   #       #  #######                  |\n");
-printf("|              #        #  # #     #  #                        |\n");
-printf("|              #        #  #   #   #  #####                    |\n");
-printf("|              #        #  #     # #  #                        |\n");
-printf("|                #######   #       #  #######                  |\n");
-printf("|                                                              |\n");
-printf("|             .-.. . ...- .-.. / --- -. ..- .----.             |\n");
-printf("|                                                              |\n");
-printf("|         ______________     __________  ____                  |\n");
-printf("+______________________________________________________________+\n");
-printf("\nWelcome to level One!!!!");
-}
- /* @brief Prints the 'Level Two' screen to the console
-*/
-void startLevelTwo() {
-empty();
-printf("\n+______________________________________________________________+\n");
-printf("|                                                              |\n");
-printf("|                                                              |\n");
-printf("|  ______  __      _____________      ___________      ____    |\n");
-printf("|                                                              |\n");
-printf("|                                                              |\n");
-printf("|         #        ######  #         #  ########  #            |\n");
-printf("|         #        #        #       #   #         #            |\n");
-printf("|         #        #####     #     #    #####     #            |\n");
-printf("|         #        #          #   #     #         #            |\n");
-printf("|         #######  #######      #       ########  #######      |\n");
-printf("|                                                              |\n");
-printf("|               ##########  #       #   ########               |\n");
-printf("|                   #       #       #  #        #              |\n");
-printf("|                   #       #   #   #  #        #              |\n");
-printf("|                   #       #  #  # #  #        #              |\n");
-printf("|                   #       #       #   ########               |\n");
-printf("|                                                              |\n");
-printf("|                                                              |\n");
-printf("|             .-.. . ...- . .-.. / - --- ..-                   |\n");
-printf("|                                                              |\n");
-printf("|         ______________     __________  ____                  |\n");
-printf("+______________________________________________________________+\n");
-printf("\nWelcome to level Two!!!!");
+    printf("|  #               #  # # # #  # # # #   # # #  # # # #   |\n");
+    printf("|  # #           # #  #     #  #     #  #       #         |\n");
+    printf("|  #   #       #   #  #     #  # # # #  # # #   # # # #   |\n");
+    printf("|  #     #   #     #  #     #  #   #         #  #         |\n");
+    printf("|  #       #       #  # # # #  #     #  # # #   # # # #   |\n");
+    printf("+---------------------------------------------------------+\n");
+    printf("|\tUSE GP21 TO ENTER A SEQUENCE TO BEGIN\t\t  |\n");
+    printf("+---------------------------------------------------------+\n");
+    printf("|\t \"-----\" - LEVEL 01 - CHARS (EASY)\t\t  |\n");
+    printf("|\t \".----\" - LEVEL 02 - CHARS (HARD)\t\t  |\n");
+    printf("|\t \"..---\" - LEVEL 03 - WORDS (EASY)\t\t  |\n");
+    printf("|\t \"...--\" - LEVEL 04 - WORDS (HARD)\t\t  |\n");
+    printf("+---------------------------------------------------------+\n");
 }
 /**
- * @brief Blocks execution until the input is a space
+ * @brief
+ * function for each level printing output based on the user input
+ * @param level
+ * @param randomIndex
+ * @param score
+ * @param lives
  */
-void waitForOneSec()
+void printCurrentLevel(int level, int randomIndex, int score, int lives)
 {
-    while (spaceOrNot == 0) {}
-    spaceOrNot = 0;
-}
+    switch (level)
+    {
+    case 1:
 
-/**
- * @brief Prints the current level information, including the lives, score, streak, and target letter with its Morse code.
- * @param level The current game level.
- * @param randomMorse The index of the random Morse code character in the morseCode array.
- * @param score The current score.
- * @param livesNumber The current number of lives.
- * @param streak The current streak.
- */
-void printCurrentLevel(int level, int randomMorse, int score, int livesNumber, int streak)
-{
-    if(level == 1) {
-
-        empty();
-        printf("\nLives: %d \nScore: %d \nStreak: %d\nLetter to print:%c Code:", livesNumber, score, streak, morseCode[randomMorse][0]);
-        for (int i = 1; morseCode[randomMorse][i] != '\0'; i++)
+        clearscreen();
+        printf("\nLives: %d\nScore:%d\nLetter to print:%c Code:", lives, score, codeDict[randomIndex][0]);
+        for (int i = 1; codeDict[randomIndex][i] != '\0'; i++)
         {
-            printf("%c", morseCode[randomMorse][i]);
+            printf("%c", codeDict[randomIndex][i]);
         }
         printf("\n");
         return;
-    }
-    else if(level == 2) {
-        empty();
-        printf("\nLives: %d \nScore: %d \nStreak: %d\nLetter to print:%c\n", livesNumber, score, streak, morseCode[randomMorse][0]);
+        break;
+    case 2:
+
+        clearscreen();
+        printf("\nLives: %d \nScore:%d\nLetter to print:%c", lives, score, codeDict[randomIndex][0]);
+        // Printing for debugging purposes
+        // for (int i = 1; codeDict[randomIndex][i] != '\0'; i++)
+        // {
+        //     printf("%c", codeDict[randomIndex][i]);
+        // }
+        printf("\n");
         return;
+        break;
+    case 3:
+
+        clearscreen();
+        printf("\nLives: %d\nScore:%d\nWord to print:", lives, score);
+        for (int i = 0; wordDict[randomIndex][i] != '\0'; i++)
+        {
+            printf("%c", wordDict[randomIndex][i]);
+        }
+        printf("\n");
+
+        for (int i = 0; i < 3; i++)
+        {
+            for (int j = 0; j < 36; j++)
+            {
+                if (wordDict[randomIndex][i] == codeDict[j][0])
+                {
+                    printf("\\ ");
+                    for (int k = 1; codeDict[j][k] != '\0'; k++)
+                    {
+                        printf("%c", codeDict[j][k]);
+                    }
+                }
+            }
+        }
+
+        printf("\n");
+        return;
+        break;
+    case 4:
+
+        clearscreen();
+        printf("\nLives:%d\nScore:%d\nWord to print:", lives, score);
+        for (int i = 0; wordDict[randomIndex][i] != '\0'; i++)
+        {
+            printf("%c", wordDict[randomIndex][i]);
+        }
+        printf("\n");
+        // Printing for debuggin purposes
+        // for (int i = 0; i < 3; i++)
+        // {
+        //     for (int j = 0; j < 36; j++)
+        //     {
+        //         if (wordDict[randomIndex][i] == codeDict[j][0])
+        //         {
+        //             printf("\\ ");
+        //             for (int k = 1; codeDict[j][k] != '\0'; k++)
+        //             {
+        //                 printf("%c", codeDict[j][k]);
+        //             }
+        //         }
+        //     }
+        // }
+        printf("\n");
+        return;
+        break;
+
+    default:
+        break;
     }
-    else return;
 }
-    
-/** @brief Executes a countdown before starting the current level with the target letter.
- * @param level The current game level.
- * @param randomMorse The index of the random Morse code character in the morseCode array.
- * @param score The current score.
- * @param livesNumber The current number of lives.
- * @param streak The current streak.
+
+/**
+ * @brief
+ * printing a count down to let the player know that the game is about to begin
+ * @param level
+ * @param randomIndex
+ * @param score
+ * @param lives
  */
-void countDown(int level, int randomMorse, int score, int livesNumber, int streak)
+void countDown(int level, int randomIndex, int score, int lives)
 {
-    waitForOneSec();
+    put_pixel(urgb_u32(0x00, 0x7F, 0x00));
+    waitForSpace();
     watchdog_update();
-    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
-    printf("think.\n");
-    waitForOneSec();
-    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
-    printf("think..\n");
-    waitForOneSec();
-    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
-    printf("think...\n");
-    waitForOneSec();
-    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
-    printf("Ready \n");
-    waitForOneSec();
-    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
-    printf("3\n");
-    waitForOneSec();
+    printCurrentLevel(level, randomIndex, score, lives);
+    printf("3  ");
+    waitForSpace();
     watchdog_update();
-    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
-    printf("3 2\n");
-    waitForOneSec();
+    printCurrentLevel(level, randomIndex, score, lives);
+    printf("3  2  ");
+    waitForSpace();
     watchdog_update();
-    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
-    printf("3 2 1\n");
-    waitForOneSec();
+    printCurrentLevel(level, randomIndex, score, lives);
+    printf("3  2  1  ");
+    waitForSpace();
     watchdog_update();
-    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
-    printf("3 2 1 GO\n");
+    printCurrentLevel(level, randomIndex, score, lives);
+    printf("GO!\n");
 }
 
 /**
- * @brief Designates a colour based on the lives left of the player
- * @param livesNumber The current number of lives
-*/
-void livesColor(int livesNumber) {
-    if(livesNumber == 0) put_pixel(urgb_u32(0x7F, 0x00, 0x00));           // Red
-    else if(livesNumber == 1) put_pixel(urgb_u32(0x00, 0x7F, 0x7F));      // Light Blue
-    else if(livesNumber == 2) put_pixel(urgb_u32(0x80, 0x00, 0x80));      // Purple
-    else put_pixel(urgb_u32(0x00, 0x7F, 0x00));                           // Green
-}   
-
-/**
- * @brief Waits for the user to input a Morse code sequence and returns the decoded character.
- * @return char The decoded character based on the user's input.
+ * @brief
+ * funtion to reset the buffer and printing the output
  */
 
-char returnMorse()
+char returnInput()
 {
     while (true)
     {
-        if (waitButton != previousState && bitsNumber > 0)
+        if (button_buffer != prev && number_of_bits > 0)
         {
 
-            int *bits = arrBits(waitButton, bitsNumber);
-            for (int j = bitsNumber - 1; j >= 0; j--)
+            int *bits = get_bits(button_buffer, number_of_bits);
+            for (int j = number_of_bits - 1; j >= 0; j--)
             {
                 printf("%c", bits[j] + 45);
             }
             printf("\n");
-            previousState = waitButton;
-            if (bitsNumber >= 32)
+            prev = button_buffer;
+
+            if (number_of_bits >= 32)
             {
-                bufferReset();
+                reset_buffer();
             }
         }
 
-        if (spaceOrNot == 1)
+        if (isSpace == 1)
         {
-            spaceOrNot = 0;
-            char result = '?';
-            for(int i = 0; i < 36; i++)
-            {
-                if (morseCodeCheck(i) == 1)
-                {
-                    result = morseCode[i][0];
-                }
-            }
+            isSpace = 0;
+            char result = search_morse();
             return result;
         }
     }
 }
-
 /**
- * @brief Executes the first level of the game, where the user must input a given Morse code sequence to its corresponding character.
- * @return int 1 if the user completes the level successfully and moves to the next level, 0 otherwise.
+ * @brief
+ * implementation of task 1
+ * @return int
  */
-int levelOne()
+int task1()
 {
-    empty();
-    bufferReset();
+    clearscreen();
+    reset_buffer();
     put_pixel(urgb_u32(0x00, 0x7F, 0x00));
-    startLevelOne();
+    printf("\n\n\t\tWELCOME TO LEVEL 1\n\n");
     int score = 0;
     int level = 1;
-    int livesNumber = 3;
-    int streak = 0;
+    int lives = 3;
+    int nextScore = 0;
+    int addLives = 3;
 
     while (true)
     {
-        bufferReset();
+        reset_buffer();
         watchdog_update();
-        if (livesNumber == 0)
+        int randomIndex = rand() % 36;
+
+        countDown(level, randomIndex, score, lives);
+
+        char result = returnInput();
+
+        if (lives == 0)
         {
-            livesColor(livesNumber);
-            empty();
-            endGame();
+            put_pixel(urgb_u32(0x7F, 0x00, 0x00));
+            printf("\n\n\t\tSorry! You're out of lives\n\n");
             return 0;
         }
-        if (streak == 5)
+        if (nextScore == 5)
         {
-            empty();
-            printf("Well Done! Level 2 can be unlocked now!\n");
+            clearscreen();
+            printf("\n\n\t\tCongrats! You got 5 in a row. Move to Level 2\n\n");
             return 1;
         }
-        int randomMorse = rand() % 36;
 
-        countDown(level, randomMorse, score, livesNumber, streak);
-
-        char result = returnMorse();
-
-        if (result == morseCode[randomMorse][0])
+        if (result == codeDict[randomIndex][0])
         {
             score++;
-            streak++;
-            if(livesNumber < 3) {
-                livesNumber++;
-                livesColor(livesNumber);
+            nextScore++;
+            if (addLives > 0)
+            {
+                lives++;
+                addLives--;
+                put_pixel(urgb_u32(0x80, 0x00, 0x80));
             }
-            waitForOneSec();
+
+            waitForSpace();
             watchdog_update();
-            printf("Well Done! Character: %c\nStreak: %d\n", result, streak);
+            printf("Correct! Character decoded to: %c\nScore: %d\n", result, score);
         }
         else
         {
             if (score > 0)
             {
-                streak = 0;
+                score--;
+                nextScore = 0;
             }
-            livesNumber--;
-            livesColor(livesNumber);
-            waitForOneSec();
+            lives--;
+            put_pixel(urgb_u32(0xFF, 0x8C, 0x00));
+            waitForSpace();
             watchdog_update();
-            printf("Wrong! Character: %c\nStreak: %d\n", result, streak);
+            printf("Incorrect! Charater decoded to: %c\nScore: %d\n", result, score);
         }
     }
 }
-
 /**
- * @brief Executes the second level of the game, where the user must input the Morse code sequence to its corresponding character.
- *        Note that the morse code sequence is not given this time.
- * @return int 1 if the user completes the level successfully and moves to the next level, 0 otherwise.
+ * @brief
+ * implementation of task 2
+ * @return int
  */
-int levelTwo()
+int task2()
 {
-    empty();
-    bufferReset();
+    clearscreen();
+    reset_buffer();
     put_pixel(urgb_u32(0x00, 0x7F, 0x00));
-    startLevelTwo();
+    printf("\n\n\t\tWELCOME TO LEVEL 2\n\n");
     int score = 0;
     int level = 2;
-    int livesNumber = 3;
-    int streak = 0;
+    int lives = 3;
+    int nextScore = 0;
+    int addLives = 3;
     while (true)
     {
-        bufferReset();
+        reset_buffer();
         watchdog_update();
-        if (livesNumber == 0)
+        int randomIndex = rand() % 36;
+
+        countDown(level, randomIndex, score, lives);
+
+        char result = returnInput();
+
+        if (lives == 0)
         {
-            livesColor(livesNumber);
-            empty();
-            endGame();
+            clearscreen();
+            printf("\n\n\t\tSorry! You're out of lives\n\n");
+            put_pixel(urgb_u32(0x7F, 0x00, 0x00));
             return 0;
         }
-        if (streak == 5)
+        if (nextScore == 5)
         {
-            empty();
-            completedLevel();
-            return 0;
+            clearscreen();
+            printf("\n\n\t\tCongrats! You got 5 in a row. Move to LEVEL 3\n\n");
+            return 1;
         }
-        int randomMorse = rand() % 36;
 
-        countDown(level, randomMorse, score, livesNumber, streak);
-
-        char result = returnMorse();
-
-        if (result == morseCode[randomMorse][0])
+        if (result == codeDict[randomIndex][0])
         {
             score++;
-            streak++;
-            if(livesNumber < 3) {
-                livesNumber++;
-                livesColor(livesNumber);
+            nextScore++;
+            if (addLives > 0)
+            {
+                lives++;
+                addLives--;
+                put_pixel(urgb_u32(0x80, 0x00, 0x80));
             }
 
-            waitForOneSec();
+            waitForSpace();
             watchdog_update();
-            printf("Well Done! Character: %c\nStreak: %d\n", result, streak);
+            printf("Score: %d\nCorrect! Character decoded to: %c\nLives : %d", score, result, lives);
         }
         else
         {
             if (score > 0)
             {
-                streak = 0;
+                score--;
+                nextScore = 0;
             }
-            livesNumber--;
-            livesColor(livesNumber);
-            waitForOneSec();
+            lives--;
+            put_pixel(urgb_u32(0xFF, 0x8C, 0x00));
+            waitForSpace();
             watchdog_update();
-            printf("Wrong! Character: %c\nStreak: %d\n", result, streak);
+            printf("Incorrect! Charater decoded to: %c\nLives : %d", result, lives);
         }
     }
 }
+/**
+ * @brief
+ * implementation of task 3
+ * @return int
+ */
+int task3()
+{
+    clearscreen();
+    reset_buffer();
+    put_pixel(urgb_u32(0x00, 0x7F, 0x00));
+    printf("\n\n\t\tWELCOME TO LEVEL 3\n\n");
+    int score = 0;
+    int level = 3;
+    int lives = 3;
+    int nextScore = 0;
+    int addLives = 3;
+    watchdog_update();
+    while (true)
+    {
+        reset_buffer();
+        watchdog_update();
+        int randomIndex = rand() % 16;
 
-/* @brief The main process of the game that runs on core 1, handling user input and game progression.
- * @param fico A parameter not used in the function but required for core_1_process signature.
- * @return int32_t Always returns 0.
+        countDown(level, randomIndex, score, lives);
+
+        char result = returnInput();
+
+        if (lives == 0)
+        {
+            clearscreen();
+            printf("\n\n\t\tSorry! You're out of lives\n\n");
+            put_pixel(urgb_u32(0x7F, 0x00, 0x00));
+            return 0;
+        }
+
+        if (result == wordDict[randomIndex][0])
+        {
+            watchdog_update();
+            printf("\nEnter 2nd Character:\n");
+            reset_buffer();
+            watchdog_update();
+            char result2 = returnInput();
+
+            printf("\nEnter 3rd character\n");
+            reset_buffer();
+            watchdog_update();
+            char result3 = returnInput();
+            if (result2 == wordDict[randomIndex][1] && result3 == wordDict[randomIndex][2])
+            {
+                score++;
+                nextScore++;
+                if (addLives > 0)
+                {
+                    lives++;
+                    addLives--;
+                    put_pixel(urgb_u32(0x80, 0x00, 0x80));
+                }
+                waitForSpace();
+                watchdog_update();
+                printf("Score: %d\nCorrect!\nLives : %d", score, result, result2, result3, lives);
+                if (nextScore == 5)
+                {
+                    clearscreen();
+                    printf("\n\n\t\tCongrats! You got 5 in a row. Move to Task 4\n\n");
+                    watchdog_update();
+                    return 1;
+                }
+            }
+            else
+            {
+                if (score > 0)
+                {
+                    score--;
+                    nextScore = 0;
+                }
+                lives--;
+
+                put_pixel(urgb_u32(0xFF, 0x8C, 0x00));
+                waitForSpace();
+                watchdog_update();
+                printf("Incorrect!\nLives : %d", result, lives);
+            }
+        }
+        else
+        {
+            if (score > 0)
+            {
+                score--;
+                nextScore = 0;
+            }
+            lives--;
+            // wordIndex = 0;
+            put_pixel(urgb_u32(0xFF, 0x8C, 0x00));
+            waitForSpace();
+            watchdog_update();
+            printf("Incorrect! \nLives : %d", result, lives);
+        }
+    }
+}
+/**
+ * @brief
+ * implementation of task 4
+ * @return int
+ */
+int task4()
+{
+    clearscreen();
+    reset_buffer();
+    put_pixel(urgb_u32(0x00, 0x7F, 0x00));
+    printf("\n\n\t\tWELCOME TO LEVEL 4\n\n");
+    int score = 0;
+    int level = 4;
+    int lives = 3;
+    int nextScore = 0;
+    int addLives = 3;
+    watchdog_update();
+    while (true)
+    {
+        reset_buffer();
+        watchdog_update();
+        int randomIndex = rand() % 16;
+
+        countDown(level, randomIndex, score, lives);
+
+        char result = returnInput();
+
+        if (lives == 0)
+        {
+            clearscreen();
+            printf("\n\n\t\tSorry! You're out of lives\n\n");
+            put_pixel(urgb_u32(0x7F, 0x00, 0x00));
+            return 0;
+        }
+
+        if (result == wordDict[randomIndex][0])
+        {
+            printf("\nEnter 2nd Character:\n");
+            reset_buffer();
+            watchdog_update();
+            char result2 = returnInput();
+            printf("\nEnter 3rd character\n");
+            reset_buffer();
+            watchdog_update();
+            char result3 = returnInput();
+            if (result2 == wordDict[randomIndex][1] && result3 == wordDict[randomIndex][2])
+            {
+                score++;
+                nextScore++;
+                if (addLives > 0)
+                {
+                    lives++;
+                    addLives--;
+                    put_pixel(urgb_u32(0x80, 0x00, 0x80));
+                }
+                waitForSpace();
+                watchdog_update();
+                printf("Score: %dCorrect! \nLives : %d", score, result, result2, result3, lives);
+                if (nextScore == 5)
+                {
+                    clearscreen();
+                    printf("\n\n\t\tCongrats! You got 5 in a row. \n\n\t\tGame Over!\n\n");
+                    return 1;
+                }
+            }
+            else
+            {
+                if (score > 0)
+                {
+                    score--;
+                    nextScore = 0;
+                }
+                lives--;
+                put_pixel(urgb_u32(0xFF, 0x8C, 0x00));
+                waitForSpace();
+                watchdog_update();
+                printf("Incorrect! \nLives : %d", result, lives);
+            }
+        }
+        else
+        {
+            if (score > 0)
+            {
+                score--;
+                nextScore = 0;
+            }
+            lives--;
+            put_pixel(urgb_u32(0xFF, 0x8C, 0x00));
+            waitForSpace();
+            watchdog_update();
+            printf("Incorrect! \nLives : %d", result, lives);
+        }
+    }
+}
+/**
+ * @brief
+ *  Multicore function that runs the main program on the additional core.
+ * @param fico
+ * @return int32_t
  */
 int32_t core_1_process(int32_t fico)
 {
 
-    bufferReset();
-    int status = 0;
-    int continueProgress = 0;
-    int isLocked = 0;
+    reset_buffer();
+    int current = 0;
+    int progressVar = 0;
+    int locked = 0;
     while (true)
     {
-        char result = returnMorse();
-        if(result == '0') {
 
-            continueProgress = levelOne();
-            if (continueProgress == 1)
-            {
-                isLocked = 1;
-            }
-            status--;
-        }
-        else if(result == '1') 
+        char result = returnInput();
+        switch (result)
         {
-            if (isLocked == 1)
+        case '0':
+
+            progressVar = task1();
+            if (progressVar == 1)
             {
-                continueProgress = levelTwo();
+                locked++;
+            }
+            current--;
+            break;
+        case '1':
+            if (locked >= 1)
+            {
+                progressVar = task2();
+                if (progressVar == 1)
+                {
+                    locked++;
+                }
+                current--;
             }
             else
             {
-                bufferReset();
-                empty();
+                reset_buffer();
+                clearscreen();
                 printf("\n\n Level 2 is locked, Please complete Level 1\n\n");
-                waitForOneSec();
+                waitForSpace();
                 watchdog_update();
-                startGame();
+                welcomeMessage();
+                break;
             }
-            status--;
-        }
-        else {
-            bufferReset();
-            if (status == 0)
+            break;
+
+        case '2':
+            if (locked >= 2)
             {
-                startGame();
-                status++;
+                progressVar = task3();
+                if (progressVar == 1)
+                {
+                    locked++;
+                }
+                current--;
             }
+            else
+            {
+                reset_buffer();
+                clearscreen();
+                printf("\n\n Level 3 is locked, Please complete Level 2 \n\n");
+                waitForSpace();
+                watchdog_update();
+                welcomeMessage();
+                break;
+            }
+            break;
+        case '3':
+            if (locked >= 3)
+            {
+                progressVar = task4();
+                if (progressVar == 1)
+                {
+                    locked++;
+                }
+                current--;
+            }
+            else
+            {
+                reset_buffer();
+                clearscreen();
+                printf("\n\n Level 4 is locked, Please complete Level 3 \n\n");
+                waitForSpace();
+                watchdog_update();
+                welcomeMessage();
+                break;
+            }
+            break;
+
+        default:
+            reset_buffer();
+            if (current == 0)
+            {
+                welcomeMessage();
+                current++;
+            }
+            // watchdog_update();
+            break;
         }
     }
 }
 
-/**
- * @brief Main - Application entry point
- * @return int 0 return code
-*/
+// Main entry point of the application
 int main()
 {
-    waitButton = 1;
-    previousState = 0;
-    spaceOrNot = 0;
+    button_buffer = 1;
+    prev = 0;
+    isSpace = 0;
 
-    stdio_init_all();
+    stdio_init_all(); // Initialise all basic IO
 
     PIO pio = pio0;
     uint offset = pio_add_program(pio, &assign02_program);
-    assign02_program_init(pio, 0, offset, PIN_LIGHT, 800000, RGBW_FORMAT);
+    assign02_program_init(pio, 0, offset, WS2812_PIN, 800000, IS_RGBW);
     watchdog_enable(0x7fffff, 1);
 
+    // initialise the c code to run on CORE 1
     multicore_launch_core1(core1_entry);
     multicore_fifo_push_blocking((uintptr_t)&core_1_process);
     multicore_fifo_push_blocking(10);
 
-    asm("movs r1, %0" ::"r"(&waitButton));
-    asm("movs r2, %0" ::"r"(&bitsNumber));
-    asm("movs r3, %0" ::"r"(&spaceOrNot));
-
+    // move the address of button_buffer to r1
+    asm("movs r1, %0" ::"r"(&button_buffer));
+    asm("movs r2, %0" ::"r"(&number_of_bits));
+    asm("movs r3, %0" ::"r"(&isSpace));
+    // run the assembly code on CORE 0
     main_asm();
 
-    return 0;
+    return 0; // Application return code
 }
-    
