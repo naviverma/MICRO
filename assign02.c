@@ -116,6 +116,17 @@ static inline uint32_t urgb_u32(uint8_t red, uint8_t green, uint8_t blue)
 }
 
 /**
+ * @brief The current word buffer gets reset
+ */
+void bufferReset()
+{
+    waitButton = 1;
+    bitsNumber = 0;
+    previousState = 0;
+    return;
+}
+
+/**
  * @brief Returns a pointer to an array of bits representing the given buffer, allowing other parts of the code to access the 
  *        buffer's binary information.
  * @param buffer The integer buffer to extract bits from.
@@ -315,32 +326,13 @@ printf("|         ______________     __________  ____                  |\n");
 printf("+______________________________________________________________+\n");
 printf("\nWelcome to level Two!!!!");
 }
-    
-/** @brief Executes a countdown before starting the current level with the target letter.
- * @param level The current game level.
- * @param randomMorse The index of the random Morse code character in the morseCode array.
- * @param score The current score.
- * @param livesNumber The current number of lives.
- * @param streak The current streak.
+/**
+ * @brief Blocks execution until the input is a space
  */
-void countDown(int level, int randomMorse, int score, int livesNumber, int streak)
+void waitForOneSec()
 {
-    waitForOneSec();
-    watchdog_update();
-    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
-    printf("3\n");
-    waitForOneSec();
-    watchdog_update();
-    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
-    printf("2\n");
-    waitForOneSec();
-    watchdog_update();
-    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
-    printf("1\n");
-    waitForOneSec();
-    watchdog_update();
-    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
-    printf("GO\n");
+    while (spaceOrNot == 0) {}
+    spaceOrNot = 0;
 }
 
 /**
@@ -370,6 +362,47 @@ void printCurrentLevel(int level, int randomMorse, int score, int livesNumber, i
         return;
     }
     else return;
+}
+    
+/** @brief Executes a countdown before starting the current level with the target letter.
+ * @param level The current game level.
+ * @param randomMorse The index of the random Morse code character in the morseCode array.
+ * @param score The current score.
+ * @param livesNumber The current number of lives.
+ * @param streak The current streak.
+ */
+void countDown(int level, int randomMorse, int score, int livesNumber, int streak)
+{
+    waitForOneSec();
+    watchdog_update();
+    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
+    printf("think.\n");
+    waitForOneSec();
+    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
+    printf("think..\n");
+    waitForOneSec();
+    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
+    printf("think...\n");
+    waitForOneSec();
+    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
+    printf("Ready \n");
+    waitForOneSec();
+    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
+    printf("3\n");
+    waitForOneSec();
+    watchdog_update();
+    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
+    printf("3 2\n");
+    waitForOneSec();
+    watchdog_update();
+    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
+    printf("3 2 1\n");
+    waitForOneSec();
+    watchdog_update();
+    printCurrentLevel(level, randomMorse, score, livesNumber, streak);
+    printf("3 2 1 GO\n");
+    waitForOneSec();
+    waitForOneSec();
 }
 
 /**
@@ -553,26 +586,6 @@ int levelTwo()
             printf("Wrong! Character: %c\nStreak: %d\n", result, streak);
         }
     }
-}
-
-/**
- * @brief The current word buffer gets reset
- */
-void bufferReset()
-{
-    waitButton = 1;
-    bitsNumber = 0;
-    previousState = 0;
-    return;
-}
-
-/**
- * @brief Blocks execution until the input is a space
- */
-void waitForOneSec()
-{
-    while (spaceOrNot == 0) {}
-    spaceOrNot = 0;
 }
 
 /* @brief The main process of the game that runs on core 1, handling user input and game progression.
