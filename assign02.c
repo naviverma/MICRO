@@ -543,8 +543,7 @@ void empty()
     for (int i = 0; i < 50; i++)
         printf("\n");
 }
-=======
- * @brief Prints the 'Level Two' screen to the console
+ /* @brief Prints the 'Level Two' screen to the console
 */
 void startLevelTwo() {
 empty();
@@ -573,8 +572,7 @@ printf("|         ______________     __________  ____                  |\n");
 printf("+______________________________________________________________+\n");
 printf("\nWelcome to level Two!!!!");
 
-=======
- * @brief The main process of the game that runs on core 1, handling user input and game progression.
+/* @brief The main process of the game that runs on core 1, handling user input and game progression.
  * @param fico A parameter not used in the function but required for core_1_process signature.
  * @return int32_t Always returns 0.
  */
