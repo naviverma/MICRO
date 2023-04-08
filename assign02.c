@@ -406,6 +406,10 @@ void countDown(int level, int randomMorse, int score, int livesNumber, int strea
     watchdog_update();
     printCurrentLevel(level, randomMorse, score, livesNumber, streak);
     printf("3 2 1 GO\n");
+    waitForOneSec();
+    watchdog_update();
+    waitForOneSec();
+    watchdog_update();
 }
 
 /**
