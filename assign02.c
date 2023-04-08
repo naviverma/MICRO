@@ -150,6 +150,16 @@ int morseCodeCheck(int index)
         }
         if(morseCode[index][bitsNumber + 1] != '\0') return 0;
         return 1;
+    }
+}
+/**
+ * @brief Clears the console by printing 50 new lines
+ */
+void empty()
+{
+    for (int i = 0; i < 50; i++)
+        printf("\n");
+}
 /* @brief Prints the welcome screen on the console
  */
 void startGame()
@@ -275,8 +285,9 @@ printf("|                                                              |\n");
 printf("|         ______________     __________  ____                  |\n");
 printf("+______________________________________________________________+\n");
 printf("\nWelcome to level One!!!!");
+}
     
- /* @brief Executes a countdown before starting the current level with the target letter.
+/** @brief Executes a countdown before starting the current level with the target letter.
  * @param level The current game level.
  * @param randomMorse The index of the random Morse code character in the morseCode array.
  * @param score The current score.
@@ -535,14 +546,6 @@ void waitForOneSec()
     spaceOrNot = 0;
 }
 
-/**
- * @brief Clears the console by printing 50 new lines
- */
-void empty()
-{
-    for (int i = 0; i < 50; i++)
-        printf("\n");
-}
  /* @brief Prints the 'Level Two' screen to the console
 */
 void startLevelTwo() {
@@ -571,6 +574,7 @@ printf("|                                                              |\n");
 printf("|         ______________     __________  ____                  |\n");
 printf("+______________________________________________________________+\n");
 printf("\nWelcome to level Two!!!!");
+}
 
 /* @brief The main process of the game that runs on core 1, handling user input and game progression.
  * @param fico A parameter not used in the function but required for core_1_process signature.
@@ -651,4 +655,5 @@ int main()
     main_asm();
 
     return 0;
+}
     
